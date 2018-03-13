@@ -252,12 +252,19 @@ out:
 /* Should we use keymaster? */
 static int keymaster_check_compatibility()
 {
+#ifdef MINIVOLD
+    return -1;
+#else
     return keymaster_compatibility_cryptfs_scrypt();
+#endif
 }
 
 /* Create a new keymaster key and store it in this footer */
 static int keymaster_create_key(struct crypt_mnt_ftr *ftr)
 {
+#ifdef MINIVOLD // no HALs in recovery...
+    return -1;
+#else
     if (ftr->keymaster_blob_size) {
         SLOGI("Already have key");
         return 0;
@@ -275,6 +282,7 @@ static int keymaster_create_key(struct crypt_mnt_ftr *ftr)
         return -1;
     }
     return 0;
+#endif
 }
 
 /* This signs the given object using the keymaster key. */
@@ -284,6 +292,9 @@ static int keymaster_sign_object(struct crypt_mnt_ftr *ftr,
                                  unsigned char **signature,
                                  size_t *signature_size)
 {
+#ifdef MINIVOLD // no HALs in recovery...
+    return -1;
+#else
     unsigned char to_sign[RSA_KEY_SIZE_BYTES];
     size_t to_sign_size = sizeof(to_sign);
     memset(to_sign, 0, RSA_KEY_SIZE_BYTES);
@@ -320,6 +331,7 @@ static int keymaster_sign_object(struct crypt_mnt_ftr *ftr,
     return keymaster_sign_object_for_cryptfs_scrypt(ftr->keymaster_blob, ftr->keymaster_blob_size,
             KEYMASTER_CRYPTFS_RATE_LIMIT, to_sign, to_sign_size, signature, signature_size,
             ftr->keymaster_blob, KEYMASTER_BLOB_SIZE, &ftr->keymaster_blob_size);
+#endif
 }
 
 /* Store password when userdata is successfully decrypted and mounted.
@@ -2559,30 +2571,6 @@ int cryptfs_enable_internal(char *howarg, int crypt_type, const char *passwd,
             goto error_shutting_down;
         }
         fclose(breadcrumb);
-    }
-
-    /* Do extra work for a better UX when doing the long inplace encryption */
-    if (how == CRYPTO_ENABLE_INPLACE && !onlyCreateHeader) {
-        /* Now that /data is unmounted, we need to mount a tmpfs
-         * /data, set a property saying we're doing inplace encryption,
-         * and restart the framework.
-         */
-        if (fs_mgr_do_tmpfs_mount(DATA_MNT_POINT)) {
-            goto error_shutting_down;
-        }
-        /* Tells the framework that inplace encryption is starting */
-        property_set("vold.encrypt_progress", "0");
-
-        /* restart the framework. */
-        /* Create necessary paths on /data */
-        prep_data_fs();
-
-        /* Ugh, shutting down the framework is not synchronous, so until it
-         * can be fixed, this horrible hack will wait a moment for it all to
-         * shut down before proceeding.  Without it, some devices cannot
-         * restart the graphics services.
-         */
-        sleep(2);
     }
 
     /* Start the actual work of making an encrypted filesystem */
